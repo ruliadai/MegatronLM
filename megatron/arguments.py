@@ -7,6 +7,12 @@ import os
 
 import torch
 
+import megatron
+from megatron.metrics import METRICS
+from megatron.model.enums import PositionEmbeddingType
+
+
+
 def parse_args(extra_args_provider=None, ignore_unknown_args=False):
     """Parse all arguments."""
     parser = argparse.ArgumentParser(description='Megatron-LM Arguments',
