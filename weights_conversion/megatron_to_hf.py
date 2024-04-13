@@ -390,11 +390,11 @@ def write_falcon_model(
         prefix1 = f"layers.{layer}"
         prefix2 = f"transformer.h.{layer}"
         # mlp
-        weights[f"{prefix2}.mlp.dense_h_to_4h.weight"] = transformer[
-            f"{prefix1}.mlp.dense_h_to_4h.weight"
+        weights[f"{prefix2}.mlp.upscale.weight"] = transformer[
+            f"{prefix1}.mlp.upscale.weight"
         ]
-        weights[f"{prefix2}.mlp.dense_4h_to_h.weight"] = transformer[
-            f"{prefix1}.mlp.dense_4h_to_h.weight"
+        weights[f"{prefix2}.mlp.downscale.weight"] = transformer[
+            f"{prefix1}.mlp.downscale.weight"
         ]
 
         # qkv weights
@@ -415,6 +415,13 @@ def write_falcon_model(
             weights[f"{prefix2}.input_layernorm.bias"] = transformer[
                 f"{prefix1}.input_layernorm.bias"
             ]
+        elif n_layers <= 62 and dim <= 4096: #10B
+            weights[f"{prefix2}.input_layernorm.weight"] = transformer[
+                f"{prefix1}.input_layernorm.weight"
+            ]
+            weights[f"{prefix2}.input_layernorm.bias"] = transformer[
+                f"{prefix1}.input_layernorm.bias"
+            ]      
         else:
             weights[f"{prefix2}.ln_attn.weight"] = transformer[
                 f"{prefix1}.input_layernorm.weight"
