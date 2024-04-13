@@ -309,7 +309,15 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
         out = Path(f"falcon{size}b_megatron.pt").absolute()
 
     # get weights from or specified directory
-    if model_name == "falcon":
+    if model_name == "falcon" and size == 10:
+        print("Fetching weights from huggingface")
+        if model_path is None:
+            model_path = f"ruliad/falcon-true-base-v2",
+        model = AutoModelForCausalLM.from_pretrained(model_path,
+                                                     trust_remote_code=True,
+                                                     cache_dir=cache_dir)
+        hf_weights = model.state_dict()    
+    elif model_name == "falcon" and size == 7:
         print("Fetching weights from huggingface")
         if model_path is None:
             model_path = f"tiiuae/falcon-{size}b",
