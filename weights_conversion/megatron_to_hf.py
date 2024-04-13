@@ -391,9 +391,9 @@ def write_falcon_model(
         prefix2 = f"transformer.h.{layer}"
         # mlp
         weights[f"{prefix2}.mlp.upscale.weight"] = transformer[
-            f"{prefix1}.mlp.upscale.weight"
+            f"{prefix1}.mlp.dense_h_to_4h.weight"
         ]
-        weights[f"{prefix2}.mlp.downscale.weight"] = transformer[
+        weights[f"{prefix2}.mlp.dense_4h_to_h.weight"] = transformer[
             f"{prefix1}.mlp.downscale.weight"
         ]
 

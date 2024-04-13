@@ -84,9 +84,9 @@ def falcon_to_megatron(weights: dict, size: int) -> dict:
             prefix1 = f"layers.{layer}"
             prefix2 = f"transformer.h.{layer}"
             # mlp
-            transformer[f"{prefix1}.mlp.upscale.weight"] = \
+            transformer[f"{prefix1}.mlp.dense_h_to_4h.weight"] = \
                 weights[f"{prefix2}.mlp.upscale.weight"]
-            transformer[f"{prefix1}.mlp.downscale.weight"] = \
+            transformer[f"{prefix1}.mlp.dense_4h_to_h.weight"] = \
                 weights[f"{prefix2}.mlp.downscale.weight"]
             # qkv weights
             transformer[f"{prefix1}.attention.query_key_value.weight"] = \

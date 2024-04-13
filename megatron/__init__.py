@@ -15,5 +15,6 @@ from .global_vars import get_counters
 from .initialize  import initialize_megatron
 
 from .utils import (print_rank_0,
+                    print_all_nodes,
                     is_last_rank,
                     print_rank_last)
