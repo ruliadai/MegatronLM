@@ -491,6 +491,22 @@ def load_args_from_checkpoint(args, load_arg='load'):
     _set_arg('max_position_embeddings')
     _set_arg('tokenizer_type')
     _set_arg('padded_vocab_size')
+
+    _set_arg('position_embedding_type', force=True)
+    _set_arg('num_attention_heads_kv')
+    _set_arg('bias_droput_fusion')
+    _set_arg('bias_gelu_fusion')
+    _set_arg('hidden_dropout')
+    _set_arg('parallel_attn', force=True)
+    _set_arg('parallel_layernorm', force=True)
+    _set_arg('use_flash_attn')
+    _set_arg('use_rms_norm', force=True)
+    _set_arg('ffn_hidden_size')
+    _set_arg('glu_activation')
+    _set_arg('tie_embed_logits', force=True)
+    _set_arg('make_vocab_size_divisible_by', force=True)
+    _set_arg('train_iters')
+    _set_arg('sliding_window_size')
     if checkpoint_version < 3.0:
         _set_arg('tensor_model_parallel_size',
                  'model_parallel_size')

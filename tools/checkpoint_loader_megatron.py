@@ -29,6 +29,7 @@ def _load_checkpoint(queue, args):
         from megatron.arguments import parse_args, validate_args
         from megatron.global_vars import set_args, set_global_variables
         from megatron.checkpointing import load_args_from_checkpoint, load_checkpoint
+        from megatron.model.enums import PositionEmbeddingType
         from megatron.model import ModelType, module
         from megatron.core import mpu
         from megatron import fused_kernels
@@ -51,6 +52,10 @@ def _load_checkpoint(queue, args):
                 '--no-initialization',
                 '--load', args.load_dir
                 ]
+    if args.bf16:
+        sys.argv += ["--bf16"]
+    if args.load_iters is not None:
+        sys.argv += ["--load_iters", str(args.load_iters)]
 
     margs = parse_args()
     margs = load_args_from_checkpoint(margs)
@@ -77,12 +82,17 @@ def _load_checkpoint(queue, args):
     check_for_arg('max_position_embeddings')
     check_for_arg('tokenizer_type')
     check_for_arg('iteration')
-    check_for_arg('bert_binary_head')
+    if args.model_type == "BERT":
+        check_for_arg('bert_binary_head')
     check_for_arg('params_dtype')
 
     # Determine how to make our models
     if args.model_type == 'GPT':
         from pretrain_gpt import model_provider
+        margs.model_type = ModelType.encoder_or_decoder
+    elif args.model_type in {"falcon", "llama", "llama2", "codellama", "mistral"}:
+        from finetune import model_provider
+        margs.model_name = args.model_type
         margs.model_type = ModelType.encoder_or_decoder
     elif args.model_type == 'BERT':
         from pretrain_bert import model_provider
@@ -124,6 +134,8 @@ def _load_checkpoint(queue, args):
         exit(1)
 
     set_global_variables(margs)
+    mpu._DATA_PARALLEL_GROUP = 0
+
     mpu.parallel_state.set_tensor_model_parallel_world_size(margs.tensor_model_parallel_size)
     mpu.parallel_state.set_pipeline_model_parallel_world_size(margs.pipeline_model_parallel_size)
     fused_kernels.load(margs)
@@ -156,12 +168,31 @@ def _load_checkpoint(queue, args):
     md.tokenizer_type = margs.tokenizer_type
     md.iteration = margs.iteration
     md.params_dtype = margs.params_dtype
-    md.bert_binary_head = margs.bert_binary_head
+    if args.model_type == "BERT":
+        md.bert_binary_head = margs.bert_binary_head
     md.previous_tensor_parallel_size = margs.tensor_model_parallel_size
     md.previous_pipeline_parallel_size = margs.pipeline_model_parallel_size
     md.true_vocab_size = true_vocab_size
     md.make_vocab_size_divisible_by = margs.make_vocab_size_divisible_by
-
+    md.num_attention_heads_kv = margs.num_attention_heads_kv
+    md.parallel_attn = margs.parallel_attn
+    md.parallel_layernorm = margs.parallel_layernorm
+    md.use_flash_attn = margs.use_flash_attn
+    md.hidden_dropout = margs.hidden_dropout
+    md.lima_dropout = margs.lima_dropout
+    md.use_bias = margs.use_bias
+    md.use_rms_norm = margs.use_rms_norm
+    md.ffn_hidden_size = margs.ffn_hidden_size
+    md.glu_activation = margs.glu_activation
+    md.tie_embed_logits = margs.tie_embed_logits
+    md.params_dtype = margs.params_dtype
+    md.sliding_window_size = margs.sliding_window_size
+    if margs.position_embedding_type == PositionEmbeddingType.absolute:
+        md.position_embedding_type = "absolute"
+    elif margs.position_embedding_type == PositionEmbeddingType.rotary:
+        md.position_embedding_type = "rotary"
+    else:
+        raise KeyError(f"Unknown position embedding {margs.position_embedding_type}")
     # Get first pipe stage
     mpu.parallel_state.set_pipeline_model_parallel_rank(0)
     post_process = pp_size == 1
@@ -178,31 +209,58 @@ def _load_checkpoint(queue, args):
 
     # Send embeddings
     message = {
-        "position embeddings": models[0].language_model.embedding.position_embeddings.weight.data,
         "word embeddings": torch.cat(
             [models[tp_rank].language_model.embedding.word_embeddings.weight.data for tp_rank in range(tp_size)],
             dim = 0)
     }
+    if margs.position_embedding_type == PositionEmbeddingType.absolute:
+        message["position embeddings"] = models[0].language_model.embedding.position_embeddings.weight.data
 
     queue_put("embeddings", message)
+    # Get last pipe stage if lm_head needs to be sent
+    if not margs.tie_embed_logits:
+        mpu.set_pipeline_model_parallel_rank(pp_size - 1)
+        pre_process = pp_size == 1
+        if pre_process:
+            models = models_init
+        else:
+            models = _get_models(tp_size, md.params_dtype, pre_process, True)
+        models_final = models
+
+        queue_put("lm_head", {"lm_head": torch.cat([models[tp_rank].language_model.lm_head.data
+                                                    for tp_rank in range(tp_size)])})
 
     total_layer_num = 0
     for pp_rank in range(pp_size):
-        if pp_rank > 0:
-            mpu.parallel_state.set_pipeline_model_parallel_rank(pp_rank)
-            post_process = pp_rank == pp_size - 1
-            models = get_models(tp_size, md.params_dtype, False, post_process)
+        # For later pipeline parallel ranks, make the new models
+        mpu.set_pipeline_model_parallel_rank(pp_rank)
+        post_process = pp_rank == pp_size - 1
+        if pp_rank == 0:
+            models = models_init
+        elif pp_rank == pp_size - 1 and not md.tie_embed_logits:
+            models = models_final
+        else:
+            models = _get_models(tp_size, md.params_dtype, False, post_process)
+
         for layer_num in range(len(models[0].language_model.encoder.layers)):
             message = {}
 
             # Get non-parallel tensors from tp_rank 0
             layer = models[0].language_model.encoder.layers[layer_num]
             message["input layernorm weight"] = layer.input_layernorm.weight.data
-            message["input layernorm bias"] = layer.input_layernorm.bias.data
-            message["dense bias"] = layer.self_attention.dense.bias.data
-            message["post layernorm weight"] = layer.post_attention_layernorm.weight.data
-            message["post layernorm bias"] = layer.post_attention_layernorm.bias.data
-            message["mlp l1 bias"] = layer.mlp.dense_4h_to_h.bias.data
+            if margs.parallel_layernorm:
+                message["mlp layernorm weight"] = layer.mlp_layernorm.weight.data
+            if not margs.use_rms_norm:
+                message["input layernorm bias"] = layer.input_layernorm.bias.data
+                if margs.parallel_layernorm:
+                    message["mlp layernorm bias"] = layer.mlp_layernorm.bias.data
+            if not margs.parallel_attn:
+                message["post layernorm weight"] = layer.post_attention_layernorm.weight.data
+                if not margs.use_rms_norm:
+                    message["post layernorm bias"] = layer.post_attention_layernorm.bias.data
+            if margs.use_bias:
+                message["dense bias"] = layer.self_attention.dense.bias.data
+                message["mlp l1 bias"] = layer.mlp.dense_4h_to_h.bias.data
 
             # Grab all parallel tensors for this layer
             qkv_weight = []
@@ -214,18 +272,31 @@ def _load_checkpoint(queue, args):
             for tp_rank, model in enumerate(models):
                 layer = model.language_model.encoder.layers[layer_num]
                 qkv_weight.append(layer.self_attention.query_key_value.weight.data)
-                qkv_bias.append(layer.self_attention.query_key_value.bias.data)
+                if margs.use_bias:
+                    qkv_bias.append(layer.self_attention.query_key_value.bias.data)
                 dense_weight.append(layer.self_attention.dense.weight.data)
                 mlp_l0_weight.append(layer.mlp.dense_h_to_4h.weight.data)
-                mlp_l0_bias.append(layer.mlp.dense_h_to_4h.bias.data)
+                if margs.use_bias:
+                    mlp_l0_bias.append(layer.mlp.dense_h_to_4h.bias.data)
                 mlp_l1_weight.append(layer.mlp.dense_4h_to_h.weight.data)
 
             # concat them
             message["qkv weight"] = torch.cat(qkv_weight, dim=0)
-            message["qkv bias"] = torch.cat(qkv_bias, dim=0)
+            if margs.use_bias:
+                message["qkv bias"] = torch.cat(qkv_bias, dim=0)
             message["dense weight"] = torch.cat(dense_weight, dim=1)
-            message["mlp l0 weight"] = torch.cat(mlp_l0_weight, dim=0)
-            message["mlp l0 bias"] = torch.cat(mlp_l0_bias, dim=0)
+            if margs.glu_activation is None:
+                message["mlp l0 weight"] = torch.cat(mlp_l0_weight, dim=0)
+            else:
+                up_weights = []
+                gate_weights = []
+                for weight in mlp_l0_weight:
+                    up, gate = torch.chunk(weight, 2, dim=0)
+                    up_weights.append(up)
+                    gate_weights.append(gate)
+                message["mlp l0 weight"] = torch.cat(up_weights + gate_weights, dim=0)
+            if margs.use_bias:
+                message["mlp l0 bias"] = torch.cat(mlp_l0_bias, dim=0)
             message["mlp l1 weight"] = torch.cat(mlp_l1_weight, dim=1)
 
             queue_put(f"transformer layer {total_layer_num}", message)
@@ -235,10 +306,11 @@ def _load_checkpoint(queue, args):
     # Send final layernorm from tp_rank 0
     message = {
         "weight": models[0].language_model.encoder.final_layernorm.weight.data,
-        "bias": models[0].language_model.encoder.final_layernorm.bias.data
     }
+    if not margs.use_rms_norm:
+        message["bias"] = models[0].language_model.encoder.final_layernorm.bias.data
     queue_put("final layernorm", message)
-
+    
     # Send BERT lm head and binary head if it exists
     if md.model_type == 'BERT':
         print("Sending LM Pooler")
