@@ -104,10 +104,12 @@ def validate_args(args, defaults={}):
                   'use --recompute-granularity and --recompute-method  instead. '
                   'Defaulting to recompute-granularity=full and recompute-method=uniform.')
     del args.checkpoint_activations
-
     if args.recompute_activations:
         args.recompute_granularity = 'selective'
     del args.recompute_activations
+    if args.metrics == ["all"]:
+        args.metrics = list(METRICS)
+
 
     # Set input defaults.
     for key in defaults:
@@ -193,7 +195,8 @@ def validate_args(args, defaults={}):
     # across batches/microbatches. Due to additional communication overhead
     # during pipeline parallelism, it should not be set if sequence length
     # is constant during training.
-    args.variable_seq_lengths = False
+    if args.variable_seq_lengths is None:
+        args.variable_seq_lengths = False
 
     # Iteration-based training.
     if args.train_iters:
@@ -209,7 +212,7 @@ def validate_args(args, defaults={}):
             'expected no batch-size rampup for iteration-based training'
         if args.lr_warmup_fraction is not None:
             assert args.lr_warmup_iters == 0, \
-                'can only specify one of lr-warmup-fraction and lr-warmup-iters'
+                'can only specify one of lr_warmup_fraction and lr_warmup_iters'
 
     # Sample-based training.
     if args.train_samples:
@@ -220,24 +223,25 @@ def validate_args(args, defaults={}):
         assert args.lr_decay_iters is None, \
             'expected sample-based learning rate decay'
         assert args.lr_warmup_iters == 0, \
-            'expected sample-based learnig rate warmup'
+            'expected sample-based learning rate warmup'
         if args.lr_warmup_fraction is not None:
             assert args.lr_warmup_samples == 0, \
-                'can only specify one of lr-warmup-fraction ' \
-                'and lr-warmup-samples'
+                'can only specify one of lr_warmup_fraction ' \
+                'and lr_warmup_samples'
 
     if args.num_layers is not None:
         assert args.encoder_num_layers is None, \
-            'cannot have both num-layers and encoder-num-layers specified'
+            'cannot have both num_layers and encoder_num_layers specified'
         args.encoder_num_layers = args.num_layers
     else:
         assert args.encoder_num_layers is not None, \
-            'either num-layers or encoder-num-layers should be specified'
+            'either num_layers or encoder_num_layers should be specified'
         args.num_layers = args.encoder_num_layers
 
     # Check required arguments.
-    required_args = ['num_layers', 'hidden_size', 'num_attention_heads',
-                     'max_position_embeddings']
+    # required_args = ['num_layers', 'hidden_size', 'num_attention_heads',
+    #                  'max_position_embeddings']
+    required_args = ['num_layers', 'hidden_size', 'num_attention_heads']
     for req_arg in required_args:
         _check_arg_is_not_none(args, req_arg)
 
@@ -249,6 +253,9 @@ def validate_args(args, defaults={}):
         assert args.hidden_size % args.num_attention_heads == 0
         args.kv_channels = args.hidden_size // args.num_attention_heads
 
+    if args.num_attention_heads_kv is None:
+        args.num_attention_heads_kv = args.num_attention_heads
+
     if args.seq_length is not None:
         assert args.encoder_seq_length is None
         args.encoder_seq_length = args.seq_length
@@ -256,10 +263,18 @@ def validate_args(args, defaults={}):
         assert args.encoder_seq_length is not None
         args.seq_length = args.encoder_seq_length
 
-    if args.seq_length is not None:
-        assert args.max_position_embeddings >= args.seq_length
-    if args.decoder_seq_length is not None:
-        assert args.max_position_embeddings >= args.decoder_seq_length
+    if not isinstance(args.position_embedding_type, PositionEmbeddingType):
+        args.position_embedding_type = PositionEmbeddingType[args.position_embedding_type]
+    if args.position_embedding_type in [PositionEmbeddingType.absolute, PositionEmbeddingType.rotary]:
+        assert args.max_position_embeddings is not None
+        if args.seq_length is not None:
+            assert args.max_position_embeddings >= args.seq_length
+        if args.decoder_seq_length is not None:
+            assert args.max_position_embeddings >= args.decoder_seq_length
+        assert args.rope_scaling_factor >= 1, 'rope_scaling_factor must be >= 1'
+    else:
+        assert args.max_position_embeddings is None
+
     if args.lr is not None:
         assert args.min_lr <= args.lr
     if args.save is not None:
@@ -323,6 +338,10 @@ def validate_args(args, defaults={}):
             'recompute method is not yet supported for ' \
             'selective recomputing granularity'
 
+    # Parallel attention.
+    if not args.parallel_attn:
+        assert not args.parallel_layernorm, "parallel_layernorm only implemented with parallel_attention"
+
     # disable sequence parallelism when tp=1
     # to avoid change in numerics when
     # sequence_parallelism is enabled.
@@ -334,7 +353,7 @@ def validate_args(args, defaults={}):
     if args.sequence_parallel:
         args.async_tensor_model_parallel_allreduce = False
 
-    if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1":
+    if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') and os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') != "1":
         if args.sequence_parallel:
             raise RuntimeError(
                 "Using sequence parallelism requires setting the environment variable "
@@ -343,21 +362,8 @@ def validate_args(args, defaults={}):
             raise RuntimeError(
                 "Using async gradient all reduce requires setting the environment "
                 "variable CUDA_DEVICE_MAX_CONNECTIONS to 1")
-
-    # Expert model parallelism assume local DDP and contiguous buffers.
-    if args.moe_expert_model_parallelism:
-        assert args.DDP_impl == 'local'
-        assert args.use_contiguous_buffers_in_local_ddp
-
-        # Expert model parallelism does not work with the distributed optimizer
-        # yet. The distributed optimizer assumes that all of the parameters to
-        # optimize are in the contiguous gradient buffer but this is not true
-        # when we are using expert model parallelism.
-        assert not args.use_distributed_optimizer
-
     _print_args(args)
     return args
-
 
 def _print_args(args):
     """Print arguments."""
