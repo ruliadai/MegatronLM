@@ -98,6 +98,8 @@ def get_args():
                        help='What type of tokenizer to use.')
     group.add_argument('--vocab-file', type=str, default=None,
                        help='Path to the vocab file')
+    group.add_argument('--vocab_extra_ids_list', type=str, default=None,
+                       help='comma separated list of special vocab ids to add to the tokenizer')
     group.add_argument('--merge-file', type=str, default=None,
                        help='Path to the BPE merge file (if necessary).')
     group.add_argument('--append-eod', action='store_true',
