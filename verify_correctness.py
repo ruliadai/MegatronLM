@@ -12,7 +12,7 @@ from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from megatron import get_args, update_num_microbatches
 from megatron.arguments import parse_args
 from megatron.initialize import initialize_megatron, set_jit_fusion_options
-from megatron.training import _setup_model_and_optimizer, build_train_valid_test_data_iterators
+from megatron.training import setup_model_and_optimizer, build_train_valid_test_data_iterators
 
 from finetune import model_provider, extra_args, get_batch, loss_func, data_provider
 
