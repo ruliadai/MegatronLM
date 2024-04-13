@@ -18,6 +18,7 @@ _GLOBAL_TENSORBOARD_WRITER = None
 _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
+_GLOBAL_COUNTERS = None
 
 def get_args():
     """Return arguments."""
@@ -60,6 +61,12 @@ def get_timers():
     """Return timers."""
     _ensure_var_is_initialized(_GLOBAL_TIMERS, 'timers')
     return _GLOBAL_TIMERS
+
+
+def get_counters():
+    """Return counters."""
+    _ensure_var_is_initialized(_GLOBAL_COUNTERS, 'counters')
+    return _GLOBAL_COUNTERS
 
 
 def get_signal_handler():
