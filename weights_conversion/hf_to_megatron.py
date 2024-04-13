@@ -469,7 +469,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Convert Huggingface llama or falcon weights to "
                                         "megatron-compatible weights")
     parser.add_argument("model", choices={"falcon", "llama", "llama2", "codellama", "mistral"})
-    parser.add_argument("--size", default=7, choices={7, 13, 30, 34, 40, 65, 70}, type=int,
+    parser.add_argument("--size", default=7, choices={7, 13, 30, 34, 40, 65, 70, 10}, type=int,
                         help="The size of the model")
     parser.add_argument("--out", type=Path,
                         help="Directory to store the megatron weights (as checkpoint)")
@@ -483,7 +483,7 @@ if __name__ == "__main__":
 
     # small arg verification
     if args.model == "falcon":
-        assert args.size in {7, 40}
+        assert args.size in {7, 40, 10}
     elif args.model == "llama":
         assert args.size in {7, 13, 30, 65}
     elif args.model == "codellama":
