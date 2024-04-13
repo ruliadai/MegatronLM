@@ -106,7 +106,9 @@ def get_args():
                        help='Append an <eod> token to the end of a document.')
     group.add_argument('--lang', type=str, default='english',
                        help='Language to use for NLTK-powered sentence splitting.')
-
+    group.add_argument("--no_new_tokens", action="store_false", dest="new_tokens",
+                       help=("Whether to add special tokens (e.g. CLS, MASK, etc) "
+                             "in the sentenciepiece tokenizer or not"))
 
     group = parser.add_argument_group(title='output data')
     group.add_argument('--output-prefix', type=str, required=True,
