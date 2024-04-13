@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-import llama
 from torch import nn
 from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer, MistralForCausalLM
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
@@ -16,32 +15,6 @@ from megatron.initialize import initialize_megatron, set_jit_fusion_options
 from megatron.training import _setup_model_and_optimizer, build_train_valid_test_data_iterators
 
 from finetune import model_provider, extra_args, get_batch, loss_func, data_provider
-
-
-class Llama2Wrapper(nn.Module):
-    def __init__(self, cache_dir):
-        super().__init__()
-        initialize_model_parallel(1)
-        cache_dir = Path(cache_dir)
-        checkpoints = sorted(cache_dir.glob("*.pth"))
-        assert len(checkpoints) == 1, "Currently, only llama2 unsharded models implemented"
-        with open(cache_dir/"params.json", "r") as f:
-            params = json.loads(f.read())
-            params["vocab_size"] = 32000
-
-        self.model = llama.Transformer(llama.ModelArgs(
-            max_seq_len=4096, max_batch_size=1, **params
-        ))
-        self.model.load_state_dict(torch.load(checkpoints[0]), strict=False)
-
-    def forward(self, input_ids, position_ids=None, attention_mask=None,
-                labels=None):
-        if labels is not None:
-            warnings.warn("Llama2 does not compute loss")
-        logits = self.model(input_ids, 0)
-        loss = torch.tensor(0.0).to(logits.device, logits.dtype)
-        return {"logits": logits, "loss": loss}
-
 
 def is_meta_llama2_path(path: Optional[Path]) -> bool:
     return path is not None and len(list(path.glob("*.pth"))) > 0
@@ -79,7 +52,7 @@ def hf_provider(name: str, cache_dir: Optional[Path], device: str,
     elif name == "llama2" and is_meta_llama2_path(cache_dir):
         print(f"baseline path {cache_dir} does not look like a huggingface, "
               "assuming it's raw llama2 weights instead")
-        model = Llama2Wrapper(cache_dir)
+        # model = Llama2Wrapper(cache_dir)
     elif name == "llama2":
         model = LlamaForCausalLM.from_pretrained(
             f"meta-llama/Llama-2-{size}b-hf", cache_dir=cache_dir,
