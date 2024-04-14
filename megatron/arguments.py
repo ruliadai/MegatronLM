@@ -501,6 +501,23 @@ def _add_network_size_args(parser):
                        dest='bert_binary_head')
     group.add_argument('--glu', action='store_true',
                        help='Use gated linear units')
+    group.add_argument('--rope_scaling_factor', type=float, default=1.0,
+                       help='Set the linear RoPE scaling factor for sequence interpolation.')
+    group.add_argument('--rope_theta', type=float, default=10000.0,
+                       help='Set RoPE theta base (llama/llama2: 1e4, codellama: 1e6).')
+    # Added mainly for Falcon
+    group.add_argument("--parallel_attn", action="store_true",
+                       help="Whether to use parallel mlp and attn computation with a single layernorm")
+    group.add_argument("--parallel_layernorm", action="store_true",
+                       help="Whether to use a dedicated layernorm for the mlp in the attention")
+    # Added mainly for Llama
+    group.add_argument("--no_tie_embed_logits", action="store_false", dest="tie_embed_logits",
+                       help=("If set, the weights of the word embedding and lm_head "
+                             "are not tied"))
+    # Added for Mistral
+    group.add_argument("--sliding_window_size", type=int, default=None,
+                       help="Whether to use sliding window attention for Mistral. Default is None, which means no sliding window attention.")
+ 
     return parser
 
 
@@ -994,7 +1011,8 @@ def _add_data_args(parser):
                        '1) a single data path, 2) multiple datasets in the'
                        'form: dataset1-weight dataset1-path dataset2-weight '
                        'dataset2-path ...')
-
+    group.add_argument('--variable_seq_lengths', action='store_true', default=None,
+                       help='Enable variable sequence lengths.')
     group.add_argument('--vocab-file', type=str, default=None,
                        help='Path to the vocab file.')
     group.add_argument('--merge-file', type=str, default=None,

@@ -92,7 +92,7 @@ def hf_forward(model, batch):
 
 def mega_provider(name: str):
     print("Getting megatron model...")
-    model, _ , _ = _setup_model_and_optimizer(model_provider, name, args=get_args())
+    model, _ , _ = setup_model_and_optimizer(model_provider, name)
     assert len(model) == 1, "correctness verification only supported with unsharded models"
     model = model[0].eval().requires_grad_(False)
     return model
@@ -134,7 +134,7 @@ def main():
     # Misc initializations
     print("Starting megatron vs huggingface verification")
     args = get_args()
-    set_jit_fusion_options(args)
+    set_jit_fusion_options()
 
     # Determine if the provided weight is a megatron checkpoint or huggingface checkpoint
     print("Loading our model!")

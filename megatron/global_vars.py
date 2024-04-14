@@ -176,6 +176,12 @@ def _set_timers(args):
     _GLOBAL_TIMERS = Timers(args.timing_log_level, args.timing_log_option)
 
 
+def _set_counters(args):
+    global _GLOBAL_COUNTERS
+    _ensure_var_is_not_initialized(_GLOBAL_COUNTERS, 'counters')
+    _GLOBAL_COUNTERS = defaultdict(int)
+
+
 def _ensure_var_is_initialized(var, name):
     """Make sure the input variable is not None."""
     assert var is not None, '{} is not initialized.'.format(name)

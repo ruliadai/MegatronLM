@@ -390,12 +390,20 @@ def write_falcon_model(
         prefix1 = f"layers.{layer}"
         prefix2 = f"transformer.h.{layer}"
         # mlp
-        weights[f"{prefix2}.mlp.upscale.weight"] = transformer[
-            f"{prefix1}.mlp.dense_h_to_4h.weight"
-        ]
-        weights[f"{prefix2}.mlp.dense_4h_to_h.weight"] = transformer[
-            f"{prefix1}.mlp.downscale.weight"
-        ]
+        if n_layers <= 62 and dim <= 4096: #10B
+            weights[f"{prefix2}.mlp.dense_h_to_4h.weight"] = transformer[
+                f"{prefix1}.mlp.upscale.weight"
+            ]
+            weights[f"{prefix2}.mlp.dense_4h_to_h.weight"] = transformer[
+                f"{prefix1}.mlp.downscale.weight"
+            ]
+        else:
+            weights[f"{prefix2}.mlp.dense_h_to_4h.weight"] = transformer[
+                f"{prefix1}.mlp.dense_h_to_4h.weight"
+            ]
+            weights[f"{prefix2}.mlp.dense_4h_to_h.weight"] = transformer[
+                f"{prefix1}.mlp.dense_4h_to_h.weight"
+            ]           
 
         # qkv weights
         weights[f"{prefix2}.self_attention.query_key_value.weight"] = permute(

@@ -354,6 +354,10 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
         if size == 7:
             args = {"num_layers": 32, "hidden_size": 4544,
                     "num_attention_heads": 71, "num_attention_heads_kv": 1}
+        elif size == 10:
+            args = {"num_layers": 60, "hidden_size": 4096,
+                    "num_attention_heads": 32, "num_attention_heads_kv": 8,
+                    "parallel_layernorm": True}
         else:
             args = {"num_layers": 60, "hidden_size": 8192,
                     "num_attention_heads": 128, "num_attention_heads_kv": 8,
