@@ -356,16 +356,22 @@ def main(model_name: str = "falcon", size: int = 7, out: Optional[Path] = None,
                     "num_attention_heads": 71, "num_attention_heads_kv": 1}
         elif size == 10:
             args = {"num_layers": 60, "hidden_size": 4096,
-                    "num_attention_heads": 32, "num_attention_heads_kv": 8,
-                    "parallel_layernorm": True}
+                    "num_attention_heads": 32, "num_attention_heads_kv": 8}
         else:
             args = {"num_layers": 60, "hidden_size": 8192,
                     "num_attention_heads": 128, "num_attention_heads_kv": 8,
                     "parallel_layernorm": True}
-        args.update({"tokenizer_type": "FalconTokenizer", "use_flash_attn": True,
-                     "hidden_dropout": 0.0,
-                     "parallel_attn": True, "max_position_embeddings": 2048,
-                     "seq_length": 2048})
+        
+        if size == 10:
+            args.update({"tokenizer_type": "FalconTokenizer", "use_flash_attn": True,
+                        "hidden_dropout": 0.0,
+                        "parallel_attn": True, "max_position_embeddings": 8192,
+                        "seq_length": 8192})         
+        else:
+            args.update({"tokenizer_type": "FalconTokenizer", "use_flash_attn": True,
+                        "hidden_dropout": 0.0,
+                        "parallel_attn": True, "max_position_embeddings": 2048,
+                        "seq_length": 2048})
     elif model_name == "mistral":
         assert size == 7
         # mistral-7b mostly uses the same args as llama-7b
